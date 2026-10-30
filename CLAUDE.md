@@ -35,16 +35,16 @@ rewrites the lock file. A test is an `it(...)`/`test(...)` in a `*.test.ts` or `
 
 ## Testing
 - The gate, run on every change in a fresh worktree and on CI (*enforced*):
-  - `backend: "$python" -m ruff check .` (lint)
-  - `backend: "$python" -m ruff format --check .` (lint)
+  - `backend: $python -m ruff check .` (lint)
+  - `backend: $python -m ruff format --check .` (lint)
   - `frontend: bunx biome check --no-errors-on-unmatched --files-ignore-unknown=true ./` (lint)
-  - `backend: "$python" -m ty check app` (lint)
-  - `backend: "$python" -m mypy app` (lint)
+  - `backend: $python -m ty check app` (lint)
+  - `backend: $python -m mypy app` (lint)
   - `frontend: bun run build` (build)
-  - `backend: FASTAPI_ENV=development "$python" -m alembic upgrade head` (build)
-  - `backend: FASTAPI_ENV=development "$python" -m coverage run -m pytest tests/` (test)
-  - `backend: "$python" -m coverage report --fail-under=90` (check)
-  - `frontend: (cd ../backend && FASTAPI_ENV=development "$python" -m alembic upgrade head && "$python" app/initial_data.py) && bunx playwright install chromium chromium-headless-shell; "$python" -m uvicorn app.main:app --app-dir ../backend --port 8000 --log-level warning & for i in $(seq 1 30); do curl -sf http://localhost:8000/api/v1/utils/health-check/ > /dev/null && break; sleep 1; done && bunx playwright test --fail-on-flaky-tests --trace=retain-on-failure --workers=2` (test)
+  - `backend: FASTAPI_ENV=development $python -m alembic upgrade head` (build)
+  - `backend: FASTAPI_ENV=development $python -m coverage run -m pytest tests/` (test)
+  - `backend: $python -m coverage report --fail-under=90` (check)
+  - `frontend: (cd ../backend && FASTAPI_ENV=development $python -m alembic upgrade head && $python app/initial_data.py) && bunx playwright install chromium chromium-headless-shell; $python -m uvicorn app.main:app --app-dir ../backend --port 8000 --log-level warning & for i in $(seq 1 30); do curl -sf http://localhost:8000/api/v1/utils/health-check/ > /dev/null && break; sleep 1; done && bunx playwright test --fail-on-flaky-tests --trace=retain-on-failure --workers=2` (test)
 - Never delete, skip, focus or weaken an existing test (*enforced*: protect_tests).
 - Add tests for every behaviour you change, beside the existing tests of that code.
 
