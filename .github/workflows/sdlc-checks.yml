@@ -17,43 +17,47 @@ jobs:
       run:
         working-directory: backend
     services:
-      postgres:
-        image: postgres:17
+      db:
+        image: postgres:18
         env: &id001
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: changethis
           POSTGRES_DB: app
-        ports:
+        ports: &id002
         - 5432:5432
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s
           --health-retries 5
       mailpit:
-        image: axllent/mailpit
+        image: axllent/mailpit:v1.27.8
         ports:
         - 1025:1025
         - 8025:8025
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v5
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        persist-credentials: false
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
       with:
         python-version: 3.14.0
-    - name: 'install: "python" -m pip install --group dev -e .'
-      run: '"python" -m pip install --group dev -e .'
+    - name: 'install: python -m pip install -e . "pytest<10.0.0,>=7.4.3" "mypy<3.0.0,>=1.8.0"
+        "ty>=0.0.25" "ruff<1.0.0,>=0.16.0" "coverage<8.0.0,>=7.4.3"'
+      run: python -m pip install -e . "pytest<10.0.0,>=7.4.3" "mypy<3.0.0,>=1.8.0"
+        "ty>=0.0.25" "ruff<1.0.0,>=0.16.0" "coverage<8.0.0,>=7.4.3"
       working-directory: backend
-    - name: '"python" -m ruff check .'
-      run: '"python" -m ruff check .'
-    - name: '"python" -m ruff format --check .'
-      run: '"python" -m ruff format --check .'
-    - name: '"python" -m ty check app'
-      run: '"python" -m ty check app'
-    - name: '"python" -m mypy app'
-      run: '"python" -m mypy app'
-    - name: FASTAPI_ENV=development "python" -m alembic upgrade head
-      run: FASTAPI_ENV=development "python" -m alembic upgrade head
-    - name: FASTAPI_ENV=development "python" -m coverage run -m pytest tests/
-      run: FASTAPI_ENV=development "python" -m coverage run -m pytest tests/
-    - name: '"python" -m coverage report --fail-under=90'
-      run: '"python" -m coverage report --fail-under=90'
+    - name: python -m ruff check .
+      run: python -m ruff check .
+    - name: python -m ruff format --check .
+      run: python -m ruff format --check .
+    - name: python -m ty check app
+      run: python -m ty check app
+    - name: python -m mypy app
+      run: python -m mypy app
+    - name: FASTAPI_ENV=development python -m alembic upgrade head
+      run: FASTAPI_ENV=development python -m alembic upgrade head
+    - name: FASTAPI_ENV=development python -m coverage run -m pytest tests/
+      run: FASTAPI_ENV=development python -m coverage run -m pytest tests/
+    - name: python -m coverage report --fail-under=90
+      run: python -m coverage report --fail-under=90
   checks-frontend:
     name: checks-frontend
     runs-on: ubuntu-latest
@@ -62,48 +66,51 @@ jobs:
       run:
         working-directory: frontend
     services:
-      postgres:
-        image: postgres:17
+      db:
+        image: postgres:18
         env: *id001
-        ports:
-        - 5432:5432
+        ports: *id002
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s
           --health-retries 5
       mailpit:
-        image: axllent/mailpit
+        image: axllent/mailpit:v1.27.8
         ports:
         - 1025:1025
         - 8025:8025
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-node@v4
+    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        persist-credentials: false
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
       with:
         node-version: '20'
-    - uses: oven-sh/setup-bun@v2
+    - uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
       if: ${{ hashFiles('frontend/bun.lock', 'bun.lock') != '' }}
-    - uses: actions/setup-python@v5
+    - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
       with:
         python-version: 3.14.0
-    - name: 'install: bun install --frozen-lockfile'
-      run: bun install --frozen-lockfile
+    - name: 'install: bun ci'
+      run: bun ci
       working-directory: frontend
-    - name: 'install: "python" -m pip install --group dev -e .'
-      run: '"python" -m pip install --group dev -e .'
+    - name: 'install: python -m pip install -e . "pytest<10.0.0,>=7.4.3" "mypy<3.0.0,>=1.8.0"
+        "ty>=0.0.25" "ruff<1.0.0,>=0.16.0" "coverage<8.0.0,>=7.4.3"'
+      run: python -m pip install -e . "pytest<10.0.0,>=7.4.3" "mypy<3.0.0,>=1.8.0"
+        "ty>=0.0.25" "ruff<1.0.0,>=0.16.0" "coverage<8.0.0,>=7.4.3"
       working-directory: backend
     - name: bunx biome check --no-errors-on-unmatched --files-ignore-unknown=true
         ./
       run: bunx biome check --no-errors-on-unmatched --files-ignore-unknown=true ./
     - name: bun run build
       run: bun run build
-    - name: (cd ../backend && FASTAPI_ENV=development "python" -m alembic upgrade
-        head && "python" app/initial_data.py) && bunx playwright install chromium
-        chromium-headless-shell; "python" -m uvicorn app.main:app --app-dir ../backend
-        --port 8000 --log-level warning & for i in $(seq 1 30); do curl -sf http://localhost:8000/api/v1/utils/health-check/
+    - name: (cd ../backend && FASTAPI_ENV=development python -m alembic upgrade head
+        && python app/initial_data.py) && bunx playwright install chromium chromium-headless-shell;
+        python -m uvicorn app.main:app --app-dir ../backend --port 8000 --log-level
+        warning & for i in $(seq 1 30); do curl -sf http://localhost:8000/api/v1/utils/health-check/
         > /dev/null && break; sleep 1; done && bunx playwright test --fail-on-flaky-tests
         --trace=retain-on-failure --workers=2
-      run: (cd ../backend && FASTAPI_ENV=development "python" -m alembic upgrade head
-        && "python" app/initial_data.py) && bunx playwright install chromium chromium-headless-shell;
-        "python" -m uvicorn app.main:app --app-dir ../backend --port 8000 --log-level
+      run: (cd ../backend && FASTAPI_ENV=development python -m alembic upgrade head
+        && python app/initial_data.py) && bunx playwright install chromium chromium-headless-shell;
+        python -m uvicorn app.main:app --app-dir ../backend --port 8000 --log-level
         warning & for i in $(seq 1 30); do curl -sf http://localhost:8000/api/v1/utils/health-check/
         > /dev/null && break; sleep 1; done && bunx playwright test --fail-on-flaky-tests
         --trace=retain-on-failure --workers=2
