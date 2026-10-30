@@ -1,0 +1,41 @@
+# Written by the Agentic SDLC Platform from the Project's config; change it through the platform.
+# The paths no Run may change; a change to them needs a code owner's review.
+
+pyproject.toml @nimchungam @njt1980
+setup.cfg @nimchungam @njt1980
+tox.ini @nimchungam @njt1980
+pytest.ini @nimchungam @njt1980
+conftest.py @nimchungam @njt1980
+ruff.toml @nimchungam @njt1980
+.ruff.toml @nimchungam @njt1980
+.coveragerc @nimchungam @njt1980
+noxfile.py @nimchungam @njt1980
+mypy.ini @nimchungam @njt1980
+.mypy.ini @nimchungam @njt1980
+.flake8 @nimchungam @njt1980
+.isort.cfg @nimchungam @njt1980
+.pylintrc @nimchungam @njt1980
+pylintrc @nimchungam @njt1980
+pyrightconfig.json @nimchungam @njt1980
+.editorconfig @nimchungam @njt1980
+package.json @nimchungam @njt1980
+tsconfig*.json @nimchungam @njt1980
+jest.config.* @nimchungam @njt1980
+vitest.config.* @nimchungam @njt1980
+.eslintrc* @nimchungam @njt1980
+eslint.config.* @nimchungam @njt1980
+.prettierrc* @nimchungam @njt1980
+.npmrc @nimchungam @njt1980
+babel.config.* @nimchungam @njt1980
+biome.json @nimchungam @njt1980
+biome.jsonc @nimchungam @njt1980
+playwright.config.* @nimchungam @njt1980
+vite.config.* @nimchungam @njt1980
+vitest.workspace.* @nimchungam @njt1980
+/.claude/ @nimchungam @njt1980
+.mcp.json @nimchungam @njt1980
+/.github/ @nimchungam @njt1980
+.gitlab-ci.yml @nimchungam @njt1980
+azure-pipelines.yml @nimchungam @njt1980
+.gitattributes @nimchungam @njt1980
+CLAUDE.md @nimchungam @njt1980
