@@ -1,0 +1,118 @@
+# Written by the Agentic SDLC Platform from the Project's config; change it through the platform.
+# It runs exactly the platform's gate.
+name: sdlc-checks
+'on':
+  pull_request: {}
+  push:
+    branches:
+    - main
+permissions:
+  contents: read
+jobs:
+  checks-backend:
+    name: checks-backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 220
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:17
+        env: &id001
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: changethis
+          POSTGRES_DB: app
+        ports:
+        - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s
+          --health-retries 5
+      mailpit:
+        image: axllent/mailpit
+        ports:
+        - 1025:1025
+        - 8025:8025
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: 3.14.0
+    - name: 'install: "python" -m pip install --group dev -e .'
+      run: '"python" -m pip install --group dev -e .'
+      working-directory: backend
+    - name: '"python" -m ruff check .'
+      run: '"python" -m ruff check .'
+    - name: '"python" -m ruff format --check .'
+      run: '"python" -m ruff format --check .'
+    - name: '"python" -m ty check app'
+      run: '"python" -m ty check app'
+    - name: '"python" -m mypy app'
+      run: '"python" -m mypy app'
+    - name: FASTAPI_ENV=development "python" -m alembic upgrade head
+      run: FASTAPI_ENV=development "python" -m alembic upgrade head
+    - name: FASTAPI_ENV=development "python" -m coverage run -m pytest tests/
+      run: FASTAPI_ENV=development "python" -m coverage run -m pytest tests/
+    - name: '"python" -m coverage report --fail-under=90'
+      run: '"python" -m coverage report --fail-under=90'
+  checks-frontend:
+    name: checks-frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    defaults:
+      run:
+        working-directory: frontend
+    services:
+      postgres:
+        image: postgres:17
+        env: *id001
+        ports:
+        - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s
+          --health-retries 5
+      mailpit:
+        image: axllent/mailpit
+        ports:
+        - 1025:1025
+        - 8025:8025
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+    - uses: oven-sh/setup-bun@v2
+      if: ${{ hashFiles('frontend/bun.lock', 'bun.lock') != '' }}
+    - uses: actions/setup-python@v5
+      with:
+        python-version: 3.14.0
+    - name: 'install: bun install --frozen-lockfile'
+      run: bun install --frozen-lockfile
+      working-directory: frontend
+    - name: 'install: "python" -m pip install --group dev -e .'
+      run: '"python" -m pip install --group dev -e .'
+      working-directory: backend
+    - name: bunx biome check --no-errors-on-unmatched --files-ignore-unknown=true
+        ./
+      run: bunx biome check --no-errors-on-unmatched --files-ignore-unknown=true ./
+    - name: bun run build
+      run: bun run build
+    - name: (cd ../backend && FASTAPI_ENV=development "python" -m alembic upgrade
+        head && "python" app/initial_data.py) && bunx playwright install chromium
+        chromium-headless-shell; "python" -m uvicorn app.main:app --app-dir ../backend
+        --port 8000 --log-level warning & for i in $(seq 1 30); do curl -sf http://localhost:8000/api/v1/utils/health-check/
+        > /dev/null && break; sleep 1; done && bunx playwright test --fail-on-flaky-tests
+        --trace=retain-on-failure --workers=2
+      run: (cd ../backend && FASTAPI_ENV=development "python" -m alembic upgrade head
+        && "python" app/initial_data.py) && bunx playwright install chromium chromium-headless-shell;
+        "python" -m uvicorn app.main:app --app-dir ../backend --port 8000 --log-level
+        warning & for i in $(seq 1 30); do curl -sf http://localhost:8000/api/v1/utils/health-check/
+        > /dev/null && break; sleep 1; done && bunx playwright test --fail-on-flaky-tests
+        --trace=retain-on-failure --workers=2
+  checks:
+    name: checks
+    runs-on: ubuntu-latest
+    needs:
+    - checks-backend
+    - checks-frontend
+    steps:
+    - name: all component checks passed
+      run: 'true'
