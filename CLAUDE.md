@@ -32,6 +32,7 @@ rewrites the lock file. A test is an `it(...)`/`test(...)` in a `*.test.ts` or `
 
 ## Coding conventions
 - Follow the conventions of the code around your change: naming, error handling, logging and public API style. The reviewers check them.
+- Backend: when a `Field` declares `min_length` on a `str` used over the API boundary (a request schema), also add either `str_strip_whitespace=True` on the model config or an explicit `field_validator` that strips the value before the length check, so whitespace-only input cannot satisfy `min_length` (see the `strip_title` validator on `ItemBase`/`ItemUpdate` in `backend/app/models.py` for the pattern). See `docs/agents/VALIDATION_CONVENTIONS.md`. [cite: backend/app/models.py]
 
 ## Testing
 - The gate, run on every change in a fresh worktree and on CI (*enforced*):
