@@ -7,6 +7,8 @@ identity map can hold on to an object loaded by a previous test), and they confi
 persisted values via an independent, freshly-opened session.
 """
 
+import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -15,8 +17,16 @@ from sqlmodel import Session, select
 from app import crud
 from app.core.config import settings
 from app.core.db import engine
-from app.models import User, UserCreate, UserRegister, UserUpdate, UserUpdateMe
-from tests.utils.utils import random_lower_string
+from app.core.security import get_password_hash
+from app.models import (
+    User,
+    UserCreate,
+    UserPublic,
+    UserRegister,
+    UserUpdate,
+    UserUpdateMe,
+)
+from tests.utils.utils import random_email, random_lower_string
 
 
 @pytest.mark.parametrize("blank_full_name", ["   ", "\t", "\n", ""])
@@ -151,3 +161,58 @@ def test_update_user_strips_full_name_persists_fresh_read(
         assert user_db.full_name == "Ada Lovelace"
         fresh_session.delete(user_db)
         fresh_session.commit()
+
+
+@pytest.mark.parametrize("legacy_full_name", ["   ", "\t", ""])
+def test_user_public_reads_pre_existing_blank_full_name(legacy_full_name: str) -> None:
+    """A row stored before this requirement may have a blank ``full_name``.
+
+    Reading it back (as every ``GET`` endpoint does, via ``UserPublic``) must
+    not fail: only writes are required to refuse a blank name, existing data
+    is explicitly out of scope.
+    """
+    user_db = User(
+        id=uuid.uuid4(),
+        email=random_email(),
+        hashed_password=get_password_hash(random_lower_string()),
+        full_name=legacy_full_name,
+    )
+    public = UserPublic.model_validate(user_db)
+    assert public.full_name == legacy_full_name
+
+
+def test_read_users_lists_pre_existing_blank_full_name(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    """A pre-existing blank-named row must not break the admin user list."""
+    with Session(engine) as setup_session:
+        user_db = User(
+            id=uuid.uuid4(),
+            email=random_email(),
+            # sdlc: not a problem - random_lower_string() generates a fresh
+            # random value per call; this is not a hardcoded credential.
+            hashed_password=get_password_hash(random_lower_string()),
+            full_name="   ",
+        )
+        setup_session.add(user_db)
+        setup_session.commit()
+        user_id = user_db.id
+
+    try:
+        r = client.get(f"{settings.API_V1_STR}/users/", headers=superuser_token_headers)
+        assert r.status_code == 200
+        matching = [u for u in r.json()["data"] if u["id"] == str(user_id)]
+        assert matching
+        assert matching[0]["full_name"] == "   "
+
+        r = client.get(
+            f"{settings.API_V1_STR}/users/{user_id}", headers=superuser_token_headers
+        )
+        assert r.status_code == 200
+        assert r.json()["full_name"] == "   "
+    finally:
+        with Session(engine) as cleanup_session:
+            leftover = cleanup_session.get(User, user_id)
+            if leftover:
+                cleanup_session.delete(leftover)
+                cleanup_session.commit()
