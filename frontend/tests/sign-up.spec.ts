@@ -133,6 +133,28 @@ test("Sign up with missing full name", async ({ page }) => {
   await expect(page.getByText("Full Name is required")).toBeVisible()
 })
 
+test("Sign up with whitespace-only full name sends no request ac7", async ({
+  page,
+}) => {
+  const fullName = "   "
+  const email = randomEmail()
+  const password = randomPassword()
+  let signupRequested = false
+
+  await page.route("**/api/v1/users/signup", (route) => {
+    signupRequested = true
+    return route.continue()
+  })
+
+  await page.goto("/signup")
+
+  await fillForm(page, fullName, email, password, password)
+  await page.getByRole("button", { name: "Sign Up" }).click()
+
+  await expect(page.getByText("Full Name is required")).toBeVisible()
+  expect(signupRequested).toBe(false)
+})
+
 test("Sign up with missing email", async ({ page }) => {
   const fullName = "Test User"
   const email = ""
