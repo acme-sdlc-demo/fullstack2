@@ -76,25 +76,6 @@ class UpdatePassword(SQLModel):
 
 # Database model, database table inferred from class name
 class User(UserBase, table=True):
-    # Each request opens its own, short-lived `Session` (see
-    # `app.api.deps.get_db`), so in every environment that matters for
-    # correctness, a `User` is never already cached when a request loads it:
-    # `always_refresh` is then a no-op, since there is nothing to refresh. No
-    # route reads a `User` a second time, in the same `Session`, after
-    # mutating it and before committing, so it never discards an in-memory,
-    # uncommitted edit either. It only has an observable effect for a
-    # `Session` that outlives a single unit of work: the session-scoped `db`
-    # fixture in `tests/conftest.py`, which `Session.get()` would otherwise
-    # keep returning as it was when first loaded, even after a *different*
-    # `Session` (such as a test client's request) commits a change to the
-    # same row. `Session.get()` decides this before running any query, by
-    # checking this exact mapper flag (`sqlalchemy.orm.Mapper._get_impl`), so
-    # there is no narrower, per-query alternative (such as the
-    # `populate_existing` execution option, or an explicit `db.refresh(...)`)
-    # that a test calling `Session.get()` without itself asking for it, can
-    # be made to pick up without this flag.
-    __mapper_args__ = {"always_refresh": True}
-
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     hashed_password: str
     created_at: datetime | None = Field(default_factory=get_datetime_utc)

@@ -93,8 +93,6 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
     if (!submitData.password) {
       delete submitData.password
     }
-    const fullName = submitData.full_name?.trim()
-    submitData.full_name = fullName ? fullName : undefined
     mutation.mutate(submitData)
   }
 

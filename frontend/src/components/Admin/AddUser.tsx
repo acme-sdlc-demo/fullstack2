@@ -85,8 +85,7 @@ const AddUser = () => {
   })
 
   const onSubmit = (data: FormData) => {
-    const fullName = data.full_name?.trim()
-    mutation.mutate({ ...data, full_name: fullName ? fullName : undefined })
+    mutation.mutate(data)
   }
 
   return (

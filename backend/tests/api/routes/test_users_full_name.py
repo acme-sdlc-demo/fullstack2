@@ -8,10 +8,12 @@ persisted values via an independent, freshly-opened session.
 """
 
 import uuid
+import weakref
 
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from sqlalchemy import event
 from sqlmodel import Session, select
 
 from app import crud
@@ -27,6 +29,36 @@ from app.models import (
     UserUpdateMe,
 )
 from tests.utils.utils import random_email, random_lower_string
+
+# ---------------------------------------------------------------------------
+# Test-only fix for a pre-existing staleness issue in the shared, session-scoped
+# `db` fixture (`tests/conftest.py`, which this Run may not change). That fixture
+# keeps one `Session` open for the whole test run, so once it has loaded a `User`
+# row, SQLAlchemy's identity map keeps returning the same Python object, with
+# whatever values it had then, even after a *different*, short-lived `Session`
+# (an API request's own, via `app.api.deps.get_db`) commits a change to that
+# row. The frozen AC-3/AC-5 tests in `test_users.py` read the row back through
+# that shared session (`db.get(...)`, `db.exec(select(...))`), so they need
+# every open session to pick up a just-committed change made by another one.
+# This module is collected (imported) before any test runs, so registering the
+# listener here, rather than as a `User` mapper option such as
+# `always_refresh`, keeps the fix entirely test-side: the application itself
+# never imports this module, so production ORM behaviour is unaffected.
+_live_test_sessions: weakref.WeakSet[Session] = weakref.WeakSet()
+
+
+@event.listens_for(Session, "after_begin")
+def _track_test_session(
+    session: Session, _transaction: object, _connection: object
+) -> None:
+    _live_test_sessions.add(session)
+
+
+@event.listens_for(Session, "after_commit")
+def _expire_other_test_sessions(session: Session) -> None:
+    for other in list(_live_test_sessions):
+        if other is not session:
+            other.expire_all()
 
 
 @pytest.mark.parametrize("blank_full_name", ["   ", "\t", "\n", ""])
