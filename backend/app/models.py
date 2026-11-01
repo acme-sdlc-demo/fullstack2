@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from pydantic import EmailStr
+from pydantic import EmailStr, field_validator
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -71,6 +71,13 @@ class ItemBase(SQLModel):
     title: str = Field(min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=255)
 
+    @field_validator("title", mode="before")
+    @classmethod
+    def strip_title(cls, value: str) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
 
 # Properties to receive on item creation
 class ItemCreate(ItemBase):
@@ -81,6 +88,13 @@ class ItemCreate(ItemBase):
 class ItemUpdate(SQLModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = Field(default=None, max_length=255)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def strip_title(cls, value: str | None) -> str | None:
+        if isinstance(value, str):
+            return value.strip()
+        return value
 
 
 # Database model, database table inferred from class name

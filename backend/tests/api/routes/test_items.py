@@ -24,6 +24,32 @@ def test_create_item(
     assert "owner_id" in content
 
 
+def test_create_item_whitespace_only_title_rejected(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    data = {"title": "   ", "description": "Fighters"}
+    response = client.post(
+        f"{settings.API_V1_STR}/items/",
+        headers=superuser_token_headers,
+        json=data,
+    )
+    assert response.status_code == 422
+
+
+def test_create_item_strips_surrounding_whitespace_from_title(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    data = {"title": "  Foo  ", "description": "Fighters"}
+    response = client.post(
+        f"{settings.API_V1_STR}/items/",
+        headers=superuser_token_headers,
+        json=data,
+    )
+    assert response.status_code == 200
+    content = response.json()
+    assert content["title"] == "Foo"
+
+
 def test_read_item(
     client: TestClient, superuser_token_headers: dict[str, str], db: Session
 ) -> None:
@@ -95,6 +121,34 @@ def test_update_item(
     assert content["description"] == data["description"]
     assert content["id"] == str(item.id)
     assert content["owner_id"] == str(item.owner_id)
+
+
+def test_update_item_whitespace_only_title_rejected(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    item = create_random_item(db)
+    data = {"title": "   ", "description": "Updated description"}
+    response = client.put(
+        f"{settings.API_V1_STR}/items/{item.id}",
+        headers=superuser_token_headers,
+        json=data,
+    )
+    assert response.status_code == 422
+
+
+def test_update_item_strips_surrounding_whitespace_from_title(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    item = create_random_item(db)
+    data = {"title": "  Updated title  ", "description": "Updated description"}
+    response = client.put(
+        f"{settings.API_V1_STR}/items/{item.id}",
+        headers=superuser_token_headers,
+        json=data,
+    )
+    assert response.status_code == 200
+    content = response.json()
+    assert content["title"] == "Updated title"
 
 
 def test_update_item_not_found(
