@@ -1,0 +1,137 @@
+"""Additional coverage for "a full name can't be only spaces".
+
+These tests complement the frozen acceptance tests in ``test_users.py`` (AC-1..AC-6).
+They validate the ``full_name`` schema rules directly at the model level (so the
+assertions do not depend on reusing a shared, long-lived test ``Session`` whose
+identity map can hold on to an object loaded by a previous test), and they confirm
+persisted values via an independent, freshly-opened session.
+"""
+
+import pytest
+from fastapi.testclient import TestClient
+from pydantic import ValidationError
+from sqlmodel import Session, select
+
+from app import crud
+from app.core.config import settings
+from app.core.db import engine
+from app.models import User, UserCreate, UserRegister, UserUpdate, UserUpdateMe
+
+
+@pytest.mark.parametrize("blank_full_name", ["   ", "\t", "\n", ""])
+@pytest.mark.parametrize("schema", [UserCreate, UserRegister, UserUpdate, UserUpdateMe])
+def test_full_name_schemas_reject_blank_full_name(
+    schema: type[UserCreate | UserRegister | UserUpdate | UserUpdateMe],
+    blank_full_name: str,
+) -> None:
+    kwargs: dict[str, str] = {"full_name": blank_full_name}
+    if schema in (UserCreate, UserRegister):
+        kwargs["email"] = "someone@example.com"
+        kwargs["password"] = "password123"
+
+    with pytest.raises(ValidationError):
+        schema(**kwargs)
+
+
+@pytest.mark.parametrize("schema", [UserCreate, UserRegister, UserUpdate, UserUpdateMe])
+def test_full_name_schemas_strip_surrounding_whitespace(
+    schema: type[UserCreate | UserRegister | UserUpdate | UserUpdateMe],
+) -> None:
+    kwargs: dict[str, str] = {"full_name": "  Ada Lovelace  "}
+    if schema in (UserCreate, UserRegister):
+        kwargs["email"] = "someone@example.com"
+        kwargs["password"] = "password123"
+
+    instance = schema(**kwargs)
+    assert instance.full_name == "Ada Lovelace"
+
+
+@pytest.mark.parametrize("schema", [UserCreate, UserRegister, UserUpdate, UserUpdateMe])
+def test_full_name_schemas_allow_omitted_or_none(
+    schema: type[UserCreate | UserRegister | UserUpdate | UserUpdateMe],
+) -> None:
+    kwargs: dict[str, str] = {}
+    if schema in (UserCreate, UserRegister):
+        kwargs["email"] = "someone@example.com"
+        kwargs["password"] = "password123"
+
+    instance = schema(**kwargs)
+    assert instance.full_name is None
+
+    instance_with_none = schema(**kwargs, full_name=None)
+    assert instance_with_none.full_name is None
+
+
+def test_update_user_me_strips_full_name_persists_fresh_read(
+    client: TestClient,
+) -> None:
+    """Regression check for AC-3 that re-reads with a brand-new session.
+
+    This avoids relying on the shared, session-scoped ``db`` fixture's identity
+    map, which (independently of this feature) can keep returning an
+    already-loaded Python object for a row it fetched earlier in the test
+    session, instead of hitting the database again.
+    """
+    email = "fresh-read-ac3@example.com"
+    password = "password123"
+    with Session(engine) as setup_session:
+        existing = crud.get_user_by_email(session=setup_session, email=email)
+        if existing:
+            setup_session.delete(existing)
+            setup_session.commit()
+        user = crud.create_user(
+            session=setup_session,
+            user_create=UserCreate(email=email, password=password),
+        )
+        user_id = user.id
+
+    login_response = client.post(
+        f"{settings.API_V1_STR}/login/access-token",
+        data={"username": email, "password": password},
+    )
+    assert login_response.status_code == 200
+    headers = {"Authorization": f"Bearer {login_response.json()['access_token']}"}
+
+    r = client.patch(
+        f"{settings.API_V1_STR}/users/me",
+        headers=headers,
+        json={"full_name": "  Ada Lovelace  "},
+    )
+    assert r.status_code == 200
+    assert r.json()["full_name"] == "Ada Lovelace"
+
+    with Session(engine) as fresh_session:
+        user_db = fresh_session.get(User, user_id)
+        assert user_db
+        assert user_db.full_name == "Ada Lovelace"
+        fresh_session.delete(user_db)
+        fresh_session.commit()
+
+
+def test_update_user_strips_full_name_persists_fresh_read(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    """Regression check for AC-5 that re-reads with a brand-new session."""
+    with Session(engine) as setup_session:
+        user_in = UserCreate(email="fresh-read-ac5@example.com", password="password123")
+        existing = crud.get_user_by_email(session=setup_session, email=user_in.email)
+        if existing:
+            setup_session.delete(existing)
+            setup_session.commit()
+        user = crud.create_user(session=setup_session, user_create=user_in)
+        user_id = user.id
+
+    r = client.patch(
+        f"{settings.API_V1_STR}/users/{user_id}",
+        headers=superuser_token_headers,
+        json={"full_name": "  Ada Lovelace  "},
+    )
+    assert r.status_code == 200
+    assert r.json()["full_name"] == "Ada Lovelace"
+
+    with Session(engine) as fresh_session:
+        user_db = fresh_session.exec(select(User).where(User.id == user_id)).first()
+        assert user_db
+        assert user_db.full_name == "Ada Lovelace"
+        fresh_session.delete(user_db)
+        fresh_session.commit()
