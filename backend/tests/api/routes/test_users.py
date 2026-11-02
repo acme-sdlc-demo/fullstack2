@@ -586,7 +586,6 @@ def test_update_user_me_blank_full_name_rejected_ac3(
     assert r.status_code == 422
 
     user_db = db.get(User, uuid.UUID(current_user_id))
-    db.refresh(user_db)
     assert user_db
     assert user_db.full_name == known_full_name
 
@@ -604,7 +603,6 @@ def test_update_user_me_strips_surrounding_whitespace_from_full_name_ac3(
     assert updated_user["full_name"] == "Ada Lovelace"
 
     user_db = db.get(User, uuid.UUID(updated_user["id"]))
-    db.refresh(user_db)
     assert user_db
     assert user_db.full_name == "Ada Lovelace"
 
@@ -671,7 +669,6 @@ def test_update_user_blank_full_name_rejected_ac5(
 
     user_query = select(User).where(User.email == username)
     user_db = db.exec(user_query).first()
-    db.refresh(user_db)
     assert user_db
     assert user_db.full_name == "Original Name"
 
@@ -695,7 +692,6 @@ def test_update_user_strips_surrounding_whitespace_from_full_name_ac5(
 
     user_query = select(User).where(User.email == username)
     user_db = db.exec(user_query).first()
-    db.refresh(user_db)
     assert user_db
     assert user_db.full_name == "Ada Lovelace"
 
