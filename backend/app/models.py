@@ -17,15 +17,34 @@ class UserBase(SQLModel):
     full_name: str | None = Field(default=None, max_length=255)
 
 
+def _strip_full_name(value: str | None) -> str | None:
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            raise ValueError("full_name must not be blank")
+        return value
+    return value
+
+
 # Properties to receive via API on creation
 class UserCreate(UserBase):
     password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("full_name", mode="before")
+    @classmethod
+    def strip_full_name(cls, value: str | None) -> str | None:
+        return _strip_full_name(value)
 
 
 class UserRegister(SQLModel):
     email: EmailStr = Field(max_length=255)
     password: str = Field(min_length=8, max_length=128)
     full_name: str | None = Field(default=None, max_length=255)
+
+    @field_validator("full_name", mode="before")
+    @classmethod
+    def strip_full_name(cls, value: str | None) -> str | None:
+        return _strip_full_name(value)
 
 
 # Properties to receive via API on update, all are optional
@@ -36,10 +55,20 @@ class UserUpdate(SQLModel):
     full_name: str | None = Field(default=None, max_length=255)
     password: str | None = Field(default=None, min_length=8, max_length=128)
 
+    @field_validator("full_name", mode="before")
+    @classmethod
+    def strip_full_name(cls, value: str | None) -> str | None:
+        return _strip_full_name(value)
+
 
 class UserUpdateMe(SQLModel):
     full_name: str | None = Field(default=None, max_length=255)
     email: EmailStr | None = Field(default=None, max_length=255)
+
+    @field_validator("full_name", mode="before")
+    @classmethod
+    def strip_full_name(cls, value: str | None) -> str | None:
+        return _strip_full_name(value)
 
 
 class UpdatePassword(SQLModel):

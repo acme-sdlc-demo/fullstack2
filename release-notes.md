@@ -4,6 +4,7 @@
 
 ### Fixes
 
+* 🐛 A full name can't be only spaces: signing up, and adding or editing a user, now reject a full name made of only spaces or blank, so the sidebar and user list never show a blank name.
 * 🐛 Fix Sonner toast theme sync. PR [#2450](https://github.com/fastapi/full-stack-fastapi-template/pull/2450) by [@chris-bs23](https://github.com/chris-bs23).
 * 🐛 Add background to the sticky layout header. PR [#2384](https://github.com/fastapi/full-stack-fastapi-template/pull/2384) by [@istoutjesdijk](https://github.com/istoutjesdijk).
 

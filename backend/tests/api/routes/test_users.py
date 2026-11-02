@@ -1,6 +1,7 @@
 import uuid
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
@@ -519,3 +520,277 @@ def test_delete_user_without_privileges(
     )
     assert r.status_code == 403
     assert r.json()["detail"] == "The user doesn't have enough privileges"
+
+
+@pytest.mark.parametrize("blank_full_name", ["   ", "\t", ""])
+def test_register_user_blank_full_name_rejected_ac1(
+    client: TestClient, db: Session, blank_full_name: str
+) -> None:
+    username = random_email()
+    password = random_lower_string()
+    data = {
+        "email": username,
+        "password": password,
+        "full_name": blank_full_name,
+    }
+    r = client.post(
+        f"{settings.API_V1_STR}/users/signup",
+        json=data,
+    )
+    assert r.status_code == 422
+
+    user_db = crud.get_user_by_email(session=db, email=username)
+    assert user_db is None
+
+
+def test_register_user_strips_surrounding_whitespace_from_full_name_ac2(
+    client: TestClient, db: Session
+) -> None:
+    username = random_email()
+    password = random_lower_string()
+    data = {
+        "email": username,
+        "password": password,
+        "full_name": "  Ada Lovelace  ",
+    }
+    r = client.post(
+        f"{settings.API_V1_STR}/users/signup",
+        json=data,
+    )
+    assert r.status_code == 200
+    created_user = r.json()
+    assert created_user["full_name"] == "Ada Lovelace"
+
+    user_db = crud.get_user_by_email(session=db, email=username)
+    assert user_db
+    assert user_db.full_name == "Ada Lovelace"
+
+
+def test_update_user_me_blank_full_name_rejected_ac3(
+    client: TestClient, normal_user_token_headers: dict[str, str], db: Session
+) -> None:
+    known_full_name = "Original Name"
+    r = client.patch(
+        f"{settings.API_V1_STR}/users/me",
+        headers=normal_user_token_headers,
+        json={"full_name": known_full_name},
+    )
+    assert r.status_code == 200
+    current_user_id = r.json()["id"]
+
+    r = client.patch(
+        f"{settings.API_V1_STR}/users/me",
+        headers=normal_user_token_headers,
+        json={"full_name": "   "},
+    )
+    assert r.status_code == 422
+
+    user_db = db.get(User, uuid.UUID(current_user_id))
+    assert user_db
+    db.refresh(user_db)
+    assert user_db.full_name == known_full_name
+
+
+def test_update_user_me_strips_surrounding_whitespace_from_full_name_ac3(
+    client: TestClient, normal_user_token_headers: dict[str, str], db: Session
+) -> None:
+    r = client.patch(
+        f"{settings.API_V1_STR}/users/me",
+        headers=normal_user_token_headers,
+        json={"full_name": "  Ada Lovelace  "},
+    )
+    assert r.status_code == 200
+    updated_user = r.json()
+    assert updated_user["full_name"] == "Ada Lovelace"
+
+    user_db = db.get(User, uuid.UUID(updated_user["id"]))
+    assert user_db
+    db.refresh(user_db)
+    assert user_db.full_name == "Ada Lovelace"
+
+
+def test_create_user_blank_full_name_rejected_ac4(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    username = random_email()
+    password = random_lower_string()
+    data = {
+        "email": username,
+        "password": password,
+        "full_name": "   ",
+    }
+    r = client.post(
+        f"{settings.API_V1_STR}/users/",
+        headers=superuser_token_headers,
+        json=data,
+    )
+    assert r.status_code == 422
+
+    user_db = crud.get_user_by_email(session=db, email=username)
+    assert user_db is None
+
+
+def test_create_user_strips_surrounding_whitespace_from_full_name_ac4(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    username = random_email()
+    password = random_lower_string()
+    data = {
+        "email": username,
+        "password": password,
+        "full_name": "  Ada Lovelace  ",
+    }
+    r = client.post(
+        f"{settings.API_V1_STR}/users/",
+        headers=superuser_token_headers,
+        json=data,
+    )
+    assert r.status_code == 200
+    created_user = r.json()
+    assert created_user["full_name"] == "Ada Lovelace"
+
+    user_db = crud.get_user_by_email(session=db, email=username)
+    assert user_db
+    assert user_db.full_name == "Ada Lovelace"
+
+
+def test_update_user_blank_full_name_rejected_ac5(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    username = random_email()
+    password = random_lower_string()
+    user_in = UserCreate(email=username, password=password, full_name="Original Name")
+    user = crud.create_user(session=db, user_create=user_in)
+
+    r = client.patch(
+        f"{settings.API_V1_STR}/users/{user.id}",
+        headers=superuser_token_headers,
+        json={"full_name": "   "},
+    )
+    assert r.status_code == 422
+
+    user_query = select(User).where(User.email == username)
+    user_db = db.exec(user_query).first()
+    assert user_db
+    db.refresh(user_db)
+    assert user_db.full_name == "Original Name"
+
+
+def test_update_user_strips_surrounding_whitespace_from_full_name_ac5(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    username = random_email()
+    password = random_lower_string()
+    user_in = UserCreate(email=username, password=password)
+    user = crud.create_user(session=db, user_create=user_in)
+
+    r = client.patch(
+        f"{settings.API_V1_STR}/users/{user.id}",
+        headers=superuser_token_headers,
+        json={"full_name": "  Ada Lovelace  "},
+    )
+    assert r.status_code == 200
+    updated_user = r.json()
+    assert updated_user["full_name"] == "Ada Lovelace"
+
+    user_query = select(User).where(User.email == username)
+    user_db = db.exec(user_query).first()
+    assert user_db
+    db.refresh(user_db)
+    assert user_db.full_name == "Ada Lovelace"
+
+
+def test_register_user_full_name_omitted_or_null_ac6(client: TestClient) -> None:
+    username_omitted = random_email()
+    password = random_lower_string()
+    r = client.post(
+        f"{settings.API_V1_STR}/users/signup",
+        json={"email": username_omitted, "password": password},
+    )
+    assert r.status_code == 200
+    assert r.json()["full_name"] is None
+
+    username_null = random_email()
+    r = client.post(
+        f"{settings.API_V1_STR}/users/signup",
+        json={"email": username_null, "password": password, "full_name": None},
+    )
+    assert r.status_code == 200
+    assert r.json()["full_name"] is None
+
+
+def test_create_user_full_name_omitted_or_null_ac6(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    username_omitted = random_email()
+    password = random_lower_string()
+    r = client.post(
+        f"{settings.API_V1_STR}/users/",
+        headers=superuser_token_headers,
+        json={"email": username_omitted, "password": password},
+    )
+    assert r.status_code == 200
+    assert r.json()["full_name"] is None
+
+    username_null = random_email()
+    r = client.post(
+        f"{settings.API_V1_STR}/users/",
+        headers=superuser_token_headers,
+        json={"email": username_null, "password": password, "full_name": None},
+    )
+    assert r.status_code == 200
+    assert r.json()["full_name"] is None
+
+
+def test_update_user_full_name_omitted_or_null_ac6(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    username = random_email()
+    password = random_lower_string()
+    user_in = UserCreate(email=username, password=password, full_name="Original Name")
+    user = crud.create_user(session=db, user_create=user_in)
+
+    r = client.patch(
+        f"{settings.API_V1_STR}/users/{user.id}",
+        headers=superuser_token_headers,
+        json={"email": username},
+    )
+    assert r.status_code == 200
+    assert r.json()["full_name"] == "Original Name"
+
+    r = client.patch(
+        f"{settings.API_V1_STR}/users/{user.id}",
+        headers=superuser_token_headers,
+        json={"full_name": None},
+    )
+    assert r.status_code == 200
+    assert r.json()["full_name"] is None
+
+
+def test_update_user_me_full_name_omitted_or_null_ac6(
+    client: TestClient, normal_user_token_headers: dict[str, str]
+) -> None:
+    r = client.patch(
+        f"{settings.API_V1_STR}/users/me",
+        headers=normal_user_token_headers,
+        json={"full_name": "Original Name"},
+    )
+    assert r.status_code == 200
+    assert r.json()["full_name"] == "Original Name"
+
+    email = random_email()
+    r = client.patch(
+        f"{settings.API_V1_STR}/users/me",
+        headers=normal_user_token_headers,
+        json={"email": email},
+    )
+    assert r.status_code == 200
+    assert r.json()["full_name"] == "Original Name"
+
+    r = client.patch(
+        f"{settings.API_V1_STR}/users/me",
+        headers=normal_user_token_headers,
+        json={"full_name": None},
+    )
+    assert r.status_code == 200
+    assert r.json()["full_name"] is None
