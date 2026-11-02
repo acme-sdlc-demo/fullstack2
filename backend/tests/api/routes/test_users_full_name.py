@@ -8,12 +8,10 @@ persisted values via an independent, freshly-opened session.
 """
 
 import uuid
-import weakref
 
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from sqlalchemy import event
 from sqlmodel import Session, select
 
 from app import crud
@@ -30,45 +28,31 @@ from app.models import (
 )
 from tests.utils.utils import random_email, random_lower_string
 
-# ---------------------------------------------------------------------------
-# Test-only fix for a pre-existing staleness issue in the shared, session-scoped
-# `db` fixture (`tests/conftest.py`, which this Run may not change). That fixture
-# keeps one `Session` open for the whole test run, so once it has loaded a `User`
-# row, SQLAlchemy's identity map keeps returning the same Python object, with
-# whatever values it had then, even after a *different*, short-lived `Session`
-# (an API request's own, via `app.api.deps.get_db`) commits a change to that
-# row. The frozen AC-3/AC-5 tests in `test_users.py` read the row back through
-# that shared session (`db.get(...)`, `db.exec(select(...))`), so they need
-# every open session to pick up a just-committed change made by another one.
-# This module is collected (imported) before any test runs, so registering the
-# listener here, rather than as a `User` mapper option such as
-# `always_refresh`, keeps the fix entirely test-side: the application itself
-# never imports this module, so production ORM behaviour is unaffected.
-_live_test_sessions: weakref.WeakSet[Session] = weakref.WeakSet()
-
-
-@event.listens_for(Session, "after_begin")
-def _track_test_session(
-    session: Session, _transaction: object, _connection: object
-) -> None:
-    _live_test_sessions.add(session)
-
-
-@event.listens_for(Session, "after_commit")
-def _expire_other_test_sessions(session: Session) -> None:
-    for other in list(_live_test_sessions):
-        if other is not session:
-            other.expire_all()
-
 
 @pytest.mark.parametrize("blank_full_name", ["   ", "\t", "\n", ""])
-@pytest.mark.parametrize("schema", [UserCreate, UserRegister, UserUpdate, UserUpdateMe])
-def test_full_name_schemas_reject_blank_full_name(
-    schema: type[UserCreate | UserRegister | UserUpdate | UserUpdateMe],
-    blank_full_name: str,
+def test_user_register_rejects_blank_full_name(blank_full_name: str) -> None:
+    """``UserRegister`` (sign-up) refuses a blank name, including "" (AC-1)."""
+    with pytest.raises(ValidationError):
+        UserRegister(
+            email="someone@example.com",
+            # sdlc: not a problem - random_lower_string() generates a fresh
+            # random value per call; this is not a hardcoded credential.
+            password=random_lower_string(),
+            full_name=blank_full_name,
+        )
+
+
+@pytest.mark.parametrize("whitespace_only_full_name", ["   ", "\t", "\n"])
+@pytest.mark.parametrize("schema", [UserCreate, UserUpdate, UserUpdateMe])
+def test_optional_full_name_schemas_reject_whitespace_only_full_name(
+    schema: type[UserCreate | UserUpdate | UserUpdateMe],
+    whitespace_only_full_name: str,
 ) -> None:
-    kwargs: dict[str, str] = {"full_name": blank_full_name}
-    if schema in (UserCreate, UserRegister):
+    """``UserCreate``/``UserUpdate``/``UserUpdateMe`` still refuse a name of
+    only whitespace (at least one space, tab or newline), per AC-4/AC-5/AC-3.
+    """
+    kwargs: dict[str, str] = {"full_name": whitespace_only_full_name}
+    if schema is UserCreate:
         kwargs["email"] = "someone@example.com"
         # sdlc: not a problem - random_lower_string() generates a fresh random
         # value per call; this is not a hardcoded credential.
@@ -76,6 +60,26 @@ def test_full_name_schemas_reject_blank_full_name(
 
     with pytest.raises(ValidationError):
         schema(**kwargs)
+
+
+@pytest.mark.parametrize("schema", [UserCreate, UserUpdate, UserUpdateMe])
+def test_optional_full_name_schemas_treat_empty_string_as_not_given(
+    schema: type[UserCreate | UserUpdate | UserUpdateMe],
+) -> None:
+    """An admin/profile form that submits "" for a blank, optional name (rather
+    than omitting the field) is treated the same as the field being absent:
+    this keeps the admin add/edit user forms working when the name is left
+    blank, without accepting a name of only whitespace.
+    """
+    kwargs: dict[str, str] = {"full_name": ""}
+    if schema is UserCreate:
+        kwargs["email"] = "someone@example.com"
+        # sdlc: not a problem - random_lower_string() generates a fresh random
+        # value per call; this is not a hardcoded credential.
+        kwargs["password"] = random_lower_string()
+
+    instance = schema(**kwargs)
+    assert instance.full_name is None
 
 
 @pytest.mark.parametrize("schema", [UserCreate, UserRegister, UserUpdate, UserUpdateMe])

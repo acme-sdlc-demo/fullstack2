@@ -15,6 +15,21 @@ def strip_full_name(value: str | None) -> str | None:
     return value
 
 
+def strip_optional_full_name(value: str | None) -> str | None:
+    """Like ``strip_full_name``, but an empty string means "not given".
+
+    Some clients (the admin add/edit user forms) submit an empty string for
+    an optional ``full_name`` left blank, rather than omitting the field.
+    Treat that the same as the field being absent (``None``), while a name
+    of only whitespace (at least one space, tab or newline) still strips to
+    an empty string and so still fails the ``min_length=1`` check below,
+    and is refused with 422.
+    """
+    if value == "":
+        return None
+    return strip_full_name(value)
+
+
 # Shared properties
 class UserBase(SQLModel):
     email: EmailStr = Field(unique=True, index=True, max_length=255)
@@ -31,7 +46,7 @@ class UserCreate(UserBase):
     @field_validator("full_name", mode="before")
     @classmethod
     def strip_full_name_before_validation(cls, value: str | None) -> str | None:
-        return strip_full_name(value)
+        return strip_optional_full_name(value)
 
 
 class UserRegister(SQLModel):
@@ -56,7 +71,7 @@ class UserUpdate(SQLModel):
     @field_validator("full_name", mode="before")
     @classmethod
     def strip_full_name_before_validation(cls, value: str | None) -> str | None:
-        return strip_full_name(value)
+        return strip_optional_full_name(value)
 
 
 class UserUpdateMe(SQLModel):
@@ -66,7 +81,7 @@ class UserUpdateMe(SQLModel):
     @field_validator("full_name", mode="before")
     @classmethod
     def strip_full_name_before_validation(cls, value: str | None) -> str | None:
-        return strip_full_name(value)
+        return strip_optional_full_name(value)
 
 
 class UpdatePassword(SQLModel):
