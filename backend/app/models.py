@@ -91,6 +91,13 @@ class UpdatePassword(SQLModel):
 
 # Database model, database table inferred from class name
 class User(UserBase, table=True):
+    # Always reload a User's columns from the database instead of trusting
+    # a copy already cached in a session's identity map: a full_name (or
+    # other field) changed through a different session/request must be
+    # visible the next time this session loads the same user, not a value
+    # from before that change.
+    __mapper_args__ = {"always_refresh": True}
+
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     hashed_password: str
     created_at: datetime | None = Field(default_factory=get_datetime_utc)
