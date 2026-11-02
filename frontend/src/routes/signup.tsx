@@ -23,7 +23,7 @@ import useAuth, { isLoggedIn } from "@/hooks/useAuth"
 const formSchema = z
   .object({
     email: z.email({ message: "Invalid email address" }),
-    full_name: z.string().min(1, { message: "Full Name is required" }),
+    full_name: z.string().trim().min(1, { message: "Full Name is required" }),
     password: z
       .string()
       .min(1, { message: "Password is required" })
