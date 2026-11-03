@@ -33,4 +33,11 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
-app.frontend("/", directory=FRONTEND_DIR)
+# Resolve the frontend directory check from the parsed settings (which also
+# read the top level `.env` file) rather than relying on `FASTAPI_ENV` being
+# set as a literal process environment variable, so the app can still start
+# (e.g. for backend-only test runs) when the frontend build hasn't been
+# produced yet.
+app.frontend(
+    "/", directory=FRONTEND_DIR, check_dir=settings.FASTAPI_ENV != "development"
+)
