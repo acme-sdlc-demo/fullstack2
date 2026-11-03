@@ -95,6 +95,13 @@ class UsersPublic(SQLModel):
     count: int
 
 
+def _strip_description(value: str | None) -> str | None:
+    if isinstance(value, str):
+        value = value.strip()
+        return value or None
+    return value
+
+
 # Shared properties
 class ItemBase(SQLModel):
     title: str = Field(min_length=1, max_length=255)
@@ -106,6 +113,11 @@ class ItemBase(SQLModel):
         if isinstance(value, str):
             return value.strip()
         return value
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def strip_description(cls, value: str | None) -> str | None:
+        return _strip_description(value)
 
 
 # Properties to receive on item creation
@@ -124,6 +136,11 @@ class ItemUpdate(SQLModel):
         if isinstance(value, str):
             return value.strip()
         return value
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def strip_description(cls, value: str | None) -> str | None:
+        return _strip_description(value)
 
 
 # Database model, database table inferred from class name
