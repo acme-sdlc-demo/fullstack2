@@ -100,49 +100,50 @@ Full gate commands are in `CLAUDE.md` (*enforced*, don't change them). Summary:
 
 ## Risky areas
 
-1. **`backend/app/api/deps.py:36` has invalid Python syntax**: `except InvalidTokenError,
-   ValidationError:` is missing tuple parentheses — confirmed by reading the file directly, not just
-   the analysis [cite: backend/app/api/deps.py:36]. This is a `SyntaxError` under Python 3, and
-   almost every route module imports from `app.api.deps`, so as written the whole API — and hence
-   `pytest`/the coverage gate — fails at import/collection. This is the single highest-priority thing
-   to check before trusting any other backend finding or any green/red gate result in this worktree
-   [cite: docs/agents/analysis/backend-api.md].
-2. **`backend/app/models.py`** is the repo's top commit-churn hotspot (score 1859: 11 commits × 169
+1. **`backend/app/models.py`** is the repo's top commit-churn hotspot (score 1859: 11 commits × 169
    lines) and `User` is used in 11 other files [cite: backend/app/models.py:1-169]. The
    strip-and-reject-blank validators are duplicated per schema rather than shared, and password
    fields don't yet follow the rule at all (see Key concepts) [cite: docs/OPEN_QUESTIONS.md].
-3. **`frontend/src/client/types.gen.ts`** is the single highest-churn file in the whole repo (score
+2. **`frontend/src/client/types.gen.ts`** is the single highest-churn file in the whole repo (score
    1894: 2 commits × 947 lines), entirely generated with no test of its own; every component/route
    depends on its shapes [cite: docs/agents/analysis/frontend-client.md].
-4. **Item-ownership check duplicated 3×** and **`crud.create_item()` defined but unused** by the live
+3. **Item-ownership check duplicated 3×** and **`crud.create_item()` defined but unused** by the live
    route (which reimplements create inline) — a change to one must be checked against the other
    [cite: backend/app/api/routes/items.py:68] [cite: docs/agents/analysis/backend.md].
-5. **`frontend/src/components/Admin/AddUser.tsx`/`EditUser.tsx`** are the hottest frontend-component
+4. **`frontend/src/components/Admin/AddUser.tsx`/`EditUser.tsx`** are the hottest frontend-component
    files (6/5 commits, 239 lines each) with near-duplicate, subtly different password zod rules
    [cite: docs/agents/analysis/frontend-components.md].
-6. **No frontend unit-test framework**: `cn()` (27 callers), all 4 hooks, and every component are
+5. **No frontend unit-test framework**: `cn()` (27 callers), all 4 hooks, and every component are
    exercised only via Playwright — a pure logic regression surfaces as a visual diff, not a failing
    test, unless e2e happens to assert on it [cite: docs/agents/analysis/frontend-lib.md].
-7. **`backend/app/core/config.py`** is the backend's second churn hotspot (7 commits × 91 lines);
+6. **`backend/app/core/config.py`** is the backend's second churn hotspot (7 commits × 91 lines);
    `settings` is read in 16 other files with no dedicated test file for `app/core` itself
    [cite: docs/agents/analysis/backend-core.md].
-8. **`backend/app/alembic`'s `d98dd8ec85a3`** migration (int→UUID PKs) runs raw, order-dependent SQL
+7. **`backend/app/alembic`'s `d98dd8ec85a3`** migration (int→UUID PKs) runs raw, order-dependent SQL
    with zero automated test; only `alembic upgrade head`/`downgrade` end-to-end (run once per gate)
    checks it [cite: docs/agents/analysis/backend-alembic.md].
-9. **`frontend/openapi-ts.config.ts`** is excluded from the TypeScript build the gate runs (no
+8. **`frontend/openapi-ts.config.ts`** is excluded from the TypeScript build the gate runs (no
    tsconfig/source-set names it) and has no test; a bad edit is only caught when
    `scripts/generate-client.sh` actually runs [cite: docs/agents/analysis/frontend.md].
-10. **Version mismatch, unresolved**: `backend/pyproject.toml` pins Python `>=3.14,<4.0`
-    [cite: backend/pyproject.toml:5], but the code graph recorded `python-stdlib` `3.11` usage across
-    22 backend files — which interpreter the indexer (and CI) actually used is unconfirmed
-    [cite: docs/agents/ANALYSIS.md].
-11. **12 code files were never read for symbols** by the graph (11 outside any component —
+9. **Python version pin vs. the graph's recorded version, unresolved**: `backend/pyproject.toml`
+   pins Python `>=3.14,<4.0` [cite: backend/pyproject.toml:5], but the code graph recorded
+   `python-stdlib` `3.11` usage across 22 backend files — which interpreter the indexer (and CI)
+   actually used is unconfirmed [cite: docs/agents/ANALYSIS.md]. This is **not** a syntax risk: a
+   direct read confirms `backend/app/api/deps.py:36`'s `except InvalidTokenError, ValidationError:`
+   is **valid** Python under the pinned `>=3.14,<4.0` [cite: backend/pyproject.toml:5] — PEP 758
+   (landed in Python 3.14) allows catching several exception types in an `except` clause without
+   wrapping them in a tuple, so this is not a `SyntaxError`, and the gate's backend tests already
+   import `app.api.deps` and pass (88 passed) on the default branch
+   [cite: backend/app/api/deps.py:36]. An earlier draft of this map wrongly listed that line as a
+   live `SyntaxError` breaking every route's import and raised it as an open question; both the
+   claim and the open question are withdrawn here.
+10. **12 code files were never read for symbols** by the graph (11 outside any component —
     `packages/react-email/**`, `hooks/post_gen_project.py`, `scripts/{add_latest_release_date,
     prepare_release}.py` — plus `frontend/openapi-ts.config.ts` for imports only): any caller/callee
     relationship touching them is invisible to "callers"/"dependents" answers from the code graph
     tool; read those files directly before changing them or assuming nothing calls them
     [cite: docs/agents/ANALYSIS.md].
-12. **`private.py`'s `create_user()`** accepts `PrivateUserCreate.is_verified` but never reads it when
+11. **`private.py`'s `create_user()`** accepts `PrivateUserCreate.is_verified` but never reads it when
     building the `User` row — unconfirmed whether this is a bug or deliberate; this dev-only route
     (`FASTAPI_ENV=="development"`) is what `frontend/tests/utils/privateApi.ts` depends on for test
     user seeding [cite: backend/app/api/routes/private.py:16-20,29-33] [cite: docs/agents/analysis/backend-api.md].
