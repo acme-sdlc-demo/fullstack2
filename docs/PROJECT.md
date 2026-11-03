@@ -42,13 +42,18 @@
   `strip_full_name` pattern in `backend/app/models.py` [cite: backend/app/models.py]. This rule is
   not yet applied to password fields — see `docs/OPEN_QUESTIONS.md`.
 - Platforms: backend is Python (pytest, FastAPI/SQLModel/Postgres) [cite: profile:languages]
-  [cite: CLAUDE.md]; frontend is TypeScript/Node (Jest/Vitest config present but, per the codebase
-  map, only Playwright e2e tests actually exist today) [cite: profile:languages]
-  [cite: docs/agents/CODEBASE_MAP.md]. Checks run on GitHub Actions; a PR needs them green plus an
-  approval before merge [cite: source:transcript-run-1416470e@r1#T1]. Two deploy paths exist in the
-  repo — a `compose.yml` Docker Compose stack (Postgres/Traefik/Adminer) and a GitHub Actions
-  `deploy.yml` job targeting FastAPI Cloud — but per the team **neither is used**; both are the
-  template's unmodified defaults, kept as-is, and this Project is not deployed anywhere
+  [cite: CLAUDE.md]; the backend pins `requires-python = ">=3.14,<4.0"`
+  [cite: backend/pyproject.toml:5], and the code already relies on a Python 3.14-only feature —
+  PEP 758's unparenthesized multi-exception `except InvalidTokenError, ValidationError:` in
+  `backend/app/api/deps.py:36` — which is valid syntax under that pin, not a bug
+  [cite: backend/pyproject.toml:5] [cite: backend/app/api/deps.py:36]. Frontend is TypeScript/Node
+  (Jest/Vitest config present but, per the codebase map, only Playwright e2e tests actually exist
+  today) [cite: profile:languages] [cite: docs/agents/CODEBASE_MAP.md]. Checks run on GitHub
+  Actions; a PR needs them green plus an approval before merge
+  [cite: source:transcript-run-1416470e@r1#T1]. Two deploy paths exist in the repo — a
+  `compose.yml` Docker Compose stack (Postgres/Traefik/Adminer) and a GitHub Actions `deploy.yml`
+  job targeting FastAPI Cloud — but per the team **neither is used**; both are the template's
+  unmodified defaults, kept as-is, and this Project is not deployed anywhere
   [cite: source:transcript-run-1416470e@r1#T3].
 
 ## Decisions so far (and why)
@@ -77,6 +82,12 @@
 - **Checks run on GitHub Actions; a PR needs them green and an approval** before merge — the
   platform's gate mirrors this (ruff/ty/mypy/biome lint, backend+frontend build, pytest with a 90%
   coverage floor, full Playwright e2e) [cite: source:transcript-run-1416470e@r1#T1] [cite: CLAUDE.md].
+- **The backend's `requires-python = ">=3.14,<4.0"` pin is authoritative for syntax questions**:
+  `backend/app/api/deps.py:36`'s unparenthesized `except InvalidTokenError, ValidationError:` is
+  valid Python only from 3.14's PEP 758 onward, matches the pin, and the gate's backend tests
+  already import `app.api.deps` and pass (88 passed) on the default branch — so this is confirmed
+  working syntax, not a risk to flag [cite: backend/pyproject.toml:5]
+  [cite: backend/app/api/deps.py:36].
 
 ## Glossary
 
@@ -99,3 +110,7 @@
   [cite: source:transcript-run-1416470e@r1#T1] [cite: docs/agents/CODEBASE_MAP.md].
 - **The gate**: the platform's enforced set of checks (lint, build, test, coverage) that must pass
   on every change, listed in `CLAUDE.md` [cite: CLAUDE.md].
+- **PEP 758**: the Python 3.14 language change allowing `except A, B:` (several exception types,
+  unparenthesized) in an `except` clause; the backend's `>=3.14,<4.0` pin relies on this at
+  `backend/app/api/deps.py:36` [cite: backend/pyproject.toml:5] [cite: backend/app/api/deps.py:36].
+</content>

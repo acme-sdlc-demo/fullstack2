@@ -20,19 +20,6 @@ owner needs to decide whether the fix is to strip passwords like `title`/`full_n
 reject (without altering) a whitespace-only or leading/trailing-whitespace password. Until decided,
 this is a known gap against the written convention [cite: docs/agents/VALIDATION_CONVENTIONS.md].
 
-## `backend/app/api/deps.py`'s `except` clause has invalid Python syntax
-
-Raised by: direct read of the file during this analysis [cite: backend/app/api/deps.py].
-
-Line 36 reads `except InvalidTokenError, ValidationError:` — missing the tuple parentheses, which
-is a `SyntaxError` under Python 3 (the Python 2 `except Exc, var:` form). Nearly every route module
-imports from `app.api.deps` (`items.py`, `login.py`, `users.py`, `utils.py`)
-[cite: docs/agents/CODEBASE_MAP.md], so as written the whole API fails to import, which would make
-`pytest`/the coverage gate fail at collection. **Who can answer:** whoever owns this worktree/branch
-needs to confirm whether this is a live regression on the default branch right now, or an artifact
-specific to this run's worktree state, before trusting any other test result here
-[cite: docs/agents/ANALYSIS.md].
-
 ## `private.py`'s `create_user()` accepts but never uses `PrivateUserCreate.is_verified`
 
 Raised by: the code-graph analysis of the dev-only private route [cite: docs/agents/ANALYSIS.md].
@@ -42,17 +29,6 @@ The schema takes an `is_verified` field but the handler never reads it when buil
 to say whether dropping it is intentional (field reserved for future use) or a bug — this route
 backs the Playwright suite's test-user seeding (`frontend/tests/utils/privateApi.ts`)
 [cite: docs/agents/CODEBASE_MAP.md], so a fix would need the e2e suite re-run.
-
-## Pinned Python version vs. the version actually used
-
-Raised by: comparing the backend's own pin against the code graph's recorded library usage
-[cite: backend/pyproject.toml] [cite: docs/agents/ANALYSIS.md].
-
-`backend/pyproject.toml` requires `>=3.14,<4.0` [cite: backend/pyproject.toml], but the code graph's
-library list recorded `python-stdlib` usage at version `3.11` across 22 backend files
-[cite: docs/agents/ANALYSIS.md]. **Who can answer:** whoever controls CI/the gate's environment
-needs to confirm which interpreter actually runs the backend checks, since a tool-version-sensitive
-result (mypy/ruff output, stdlib behaviour) could differ between 3.11 and 3.14.
 
 ## Should the profile be corrected?
 
@@ -83,8 +59,17 @@ remove the veterinary-clinic line so future Runs don't need to re-discover and r
   and both files are just the template's unmodified defaults, kept as-is
   [cite: source:transcript-run-1416470e@r1#T3]. Not a contradiction once read with that context, but
   worth flagging so a future reader doesn't assume either path is live from the code alone.
-- **Python version pin vs. observed usage**: `backend/pyproject.toml` pins
-  `requires-python = ">=3.14,<4.0"` [cite: backend/pyproject.toml], while the code graph recorded
-  `python-stdlib` version `3.11` usage across 22 backend files [cite: docs/agents/ANALYSIS.md] — an
-  unresolved mismatch between the declared constraint and what was actually observed running
-  against the code; see the open question above.
+- **`backend/app/api/deps.py:36` is valid Python, not a `SyntaxError`**: the line reads
+  `except InvalidTokenError, ValidationError:`, which looks at a glance like Python 2 syntax, but
+  `backend/pyproject.toml:5` pins `requires-python = ">=3.14,<4.0"` [cite: backend/pyproject.toml:5],
+  and PEP 758 (landed in Python 3.14) allows catching several exception types in an `except` clause
+  without wrapping them in a tuple, so the line is valid under that pin. The gate's own backend
+  tests import `app.api.deps` (every route module depends on it) and pass — 88 passed on the
+  default branch — confirming this import succeeds in practice, not just in theory
+  [cite: backend/app/api/deps.py:36]. None found: there is no discrepancy here once the pin is read
+  alongside the line; an earlier draft of this analysis mistakenly treated this as a live
+  `SyntaxError` breaking every route's import and listed it as a separate open question (a Python
+  version-pin mismatch against the code graph's recorded `python-stdlib` 3.11 usage) — that claim
+  and that question are both withdrawn, and the risk is dropped from this write-up per the review
+  that caught it [cite: backend/pyproject.toml:5] [cite: backend/app/api/deps.py:36].
+</content>
