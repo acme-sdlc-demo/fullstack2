@@ -58,7 +58,10 @@ pins `requires-python = ">=3.14,<4.0"` [cite: backend/pyproject.toml:5], but the
 library list records usage of `python-stdlib` version `3.11` across 22 backend files [facts in
 the prompt's summary] — the indexer evidently ran against a 3.11 environment, not the pinned
 3.14; this is worth reconciling before trusting any Python-version-sensitive detail from the
-graph.
+graph. (One such detail already surfaced and was wrongly flagged in an earlier draft of this
+document — see `backend/app/api/deps.py:36` under "How it works", flow 2 — so treat the pin,
+`>=3.14,<4.0`, as authoritative for syntax questions even though the indexer's recorded
+`python-stdlib` version is older.)
 
 Testing: the gate enforces backend lint (`ruff check`/`ruff format --check`, `ty check`, `mypy`),
 a migration build step, `pytest` under coverage with a 90% floor, and a full Playwright e2e run;
@@ -116,9 +119,12 @@ is the browser-driven Playwright suite in `frontend/tests`
    decodes that bearer token with `jwt.decode(token, settings.SECRET_KEY, algorithms=[security.ALGORITHM])`
    [cite: backend/app/api/deps.py:30-34], builds a `TokenPayload`, and loads the `User` row by id
    [cite: backend/app/api/deps.py:41], raising 404/400 if missing or inactive
-   [cite: backend/app/api/deps.py:42-45]. **This step is currently broken in this worktree** — see
-   "Where it's fragile" below; the graph's call-graph edges from every route into `get_current_user`
-   are real, but the function as written cannot run.
+   [cite: backend/app/api/deps.py:42-45]. Its `except InvalidTokenError, ValidationError:` on line
+   36 reads like a `SyntaxError` at a glance, but it is valid here: the backend pins
+   `requires-python = ">=3.14,<4.0"` [cite: backend/pyproject.toml:5], and PEP 758 — landed in
+   Python 3.14 — allows catching several exception types in an `except` clause without wrapping
+   them in a tuple. This matches what the gate actually does: it imports `app.api.deps` and the
+   backend's tests pass on the default branch.
 4. Ends: a `User` row read (no write), or an HTTP error back to the browser.
 
 **3. Item CRUD, scoped by ownership.**
@@ -179,15 +185,7 @@ is the browser-driven Playwright suite in `frontend/tests`
 
 Ranked by how many other places would break and how little test coverage currently guards them:
 
-1. **`backend/app/api/deps.py:36` has invalid Python syntax right now**: `except InvalidTokenError,
-   ValidationError:` is missing the tuple parentheses, which is a `SyntaxError` under Python 3
-   (confirmed by reading the file directly). Nearly every route module imports from `app.api.deps`
-   (`items.py`, `login.py`, `users.py`, `utils.py`) [cite: docs/agents/analysis/backend-api.md], so
-   as written the whole API fails to import. Before anything else in this repo, fix this (wrap in
-   a tuple: `except (InvalidTokenError, ValidationError):`) and confirm `$python -m pytest tests/`
-   even runs — do not trust any other finding here until that's green
-   [cite: docs/agents/analysis/backend-api.md].
-2. **`backend/app/models.py`** is the single biggest hotspot in the repo by commit churn (score
+1. **`backend/app/models.py`** is the single biggest hotspot in the repo by commit churn (score
    1859: 11 commits × 169 lines) [cite: docs/agents/analysis/backend.md] and its `User` type is
    used in 11 other files [facts in the prompt's summary]; a field rename ripples through
    `backend/api`, the OpenAPI schema and the generated frontend client. The whitespace-stripping
@@ -199,20 +197,20 @@ Ranked by how many other places would break and how little test coverage current
    `new_password`, and `NewPassword.new_password` all declare `min_length=8` with no stripping, so
    an 8-space password currently passes validation [cite: docs/OPEN_QUESTIONS.md]. Run the full
    backend suite and check the frontend client is regenerated before touching any of these.
-3. **`frontend/src/client/types.gen.ts`** is the single highest-churn file in the whole repo (score
+2. **`frontend/src/client/types.gen.ts`** is the single highest-churn file in the whole repo (score
    1894: 2 commits × 947 lines) [cite: docs/agents/analysis/frontend-client.md], and every
    component/route/hook that calls the API depends on its shapes. It's entirely generated, has no
    test of its own, and a hand-edit is lost on regeneration — a schema change must flow from
    `backend/app/models.py` through `scripts/generate-client.sh`, not be patched here directly
    [cite: docs/agents/analysis/frontend-client.md].
-4. **The item-ownership check is duplicated three times** (`read_item`, `update_item`,
+3. **The item-ownership check is duplicated three times** (`read_item`, `update_item`,
    `delete_item` in `backend/app/api/routes/items.py:56,89,109`) instead of centralised in a
    dependency, and **`crud.create_item()` is defined but unused** by the live route, which
    reimplements the same create logic inline [cite: backend/app/api/routes/items.py:68]
    [cite: docs/agents/analysis/backend.md]. A change to who may touch an item, or to the create
    rule, must be made in step with all these call sites and their tests
    (`backend/tests/api/routes/test_items.py`).
-5. **`frontend/src/components/Admin/AddUser.tsx` and `EditUser.tsx`** are the two hottest
+4. **`frontend/src/components/Admin/AddUser.tsx` and `EditUser.tsx`** are the two hottest
    frontend-components files (6 and 5 commits over 239 lines each)
    [cite: docs/agents/analysis/frontend-components.md] and carry near-duplicate zod password rules
    (required on create, optional-and-must-match on edit); run `admin.spec.ts`'s password tests
@@ -220,23 +218,23 @@ Ranked by how many other places would break and how little test coverage current
    backend's: `title`/`full_name` fields use `z.string().min(1)` without trimming, so a
    whitespace-only value passes the client check and is only rejected server-side, surfacing as a
    generic toast instead of a field error [cite: docs/agents/analysis/frontend-components.md].
-6. **No frontend area has a unit test.** `frontend/lib`'s `cn()` (the most-depended-on symbol in
+5. **No frontend area has a unit test.** `frontend/lib`'s `cn()` (the most-depended-on symbol in
    the whole codebase, used in 27 files [facts in the prompt's summary]), all four `frontend/hooks`,
    and every `frontend/components` file are exercised only indirectly via Playwright — a pure
    regression (e.g. a changed class-merge order) would surface as a visual difference, not a
    failing test, unless the e2e suite happens to assert on it
    [cite: docs/agents/analysis/frontend-lib.md] [cite: docs/agents/analysis/frontend-hooks.md]
    [cite: docs/agents/analysis/frontend-components.md].
-7. **`backend/app/core/config.py`** is the backend's second churn hotspot (score 637: 7 commits ×
+6. **`backend/app/core/config.py`** is the backend's second churn hotspot (score 637: 7 commits ×
    91 lines) [cite: docs/agents/analysis/backend-core.md] and `settings` is read in 16 other files
    [facts in the prompt's summary]; a field rename ripples into routes, deps, alembic and tests
    that read it by name, and there is no test file dedicated to `app/core` itself
    [cite: docs/agents/analysis/backend-core.md].
-8. **`backend/app/alembic`**'s `d98dd8ec85a3` migration (integer→UUID primary keys) runs raw
+7. **`backend/app/alembic`**'s `d98dd8ec85a3` migration (integer→UUID primary keys) runs raw
    `op.execute` SQL with an order-dependent rename and has zero automated tests; the only check is
    actually running `alembic upgrade head`/`downgrade` end to end, which the gate does once per run
    [cite: docs/agents/analysis/backend-alembic.md].
-9. **`frontend/openapi-ts.config.ts`** is excluded from the TypeScript build the gate runs (`bun
+8. **`frontend/openapi-ts.config.ts`** is excluded from the TypeScript build the gate runs (`bun
    run build` doesn't type-check it) and has no test; a bad edit is only caught when
    `generate-client.sh` is actually run [cite: docs/agents/analysis/frontend.md].
 
@@ -293,12 +291,15 @@ Ranked by how many other places would break and how little test coverage current
   and whether `main.py`'s `app.frontend("/", directory=FRONTEND_DIR)` call — not a documented
   `FastAPI` method in the pinned version — works at all, since this is static analysis, not a run
   [cite: docs/agents/analysis/backend.md] [cite: docs/agents/analysis/backend-core.md].
-- **Two concrete current-state questions, not yet confirmed by a human:** (a) whether
-  `backend/app/api/deps.py:36`'s invalid `except` syntax (see "Where it's fragile" #1) is a live
-  regression on the default branch, since it would make the whole API fail to import as written
-  [cite: docs/agents/analysis/backend-api.md]; (b) whether `private.py`'s `create_user()` silently
-  dropping the incoming `PrivateUserCreate.is_verified` field is an intentional no-op or a bug
-  [cite: docs/agents/analysis/backend-api.md].
+- **One concrete current-state question, not yet confirmed by a human:** whether `private.py`'s
+  `create_user()` silently dropping the incoming `PrivateUserCreate.is_verified` field is an
+  intentional no-op or a bug [cite: docs/agents/analysis/backend-api.md]. (A prior draft of this
+  document also listed `backend/app/api/deps.py:36`'s `except InvalidTokenError, ValidationError:`
+  as a live `SyntaxError` risk and open question; it is neither — the backend pins
+  `requires-python = ">=3.14,<4.0"` [cite: backend/pyproject.toml:5], PEP 758 makes that
+  unparenthesized multi-exception form valid Python from 3.14 on, and the gate's backend tests
+  already import `app.api.deps` and pass on the default branch, so that claim and question are
+  dropped here.)
 - **An explicit open design question the team has not resolved:** whether password fields that
   declare `min_length` should be stripped like `title`/`full_name` (risking silently changing a
   user's intended password) or instead rejected-but-not-altered when whitespace-only — see
@@ -314,6 +315,8 @@ Ranked by how many other places would break and how little test coverage current
   requires Python `>=3.14,<4.0` [cite: backend/pyproject.toml:5], but the graph's library list
   shows `python-stdlib` `3.11` used across 22 backend files [facts in the prompt's summary] — which
   one the indexer actually ran against, versus what CI/the gate installs, is not resolved here.
+  Treat the pin as authoritative for any syntax question (as above for `deps.py:36`), since the
+  gate's own tests run against the pinned interpreter.
 - **No `docs/agents/CODEBASE_MAP.md` exists yet** in this worktree, so this analysis cannot cite a
   cross-Project "Connections" list; per `CLAUDE.md` that file "comes with the Project's Knowledge
   Run," which this run is producing alongside this document [cite: CLAUDE.md].
@@ -325,11 +328,10 @@ Ranked by how many other places would break and how little test coverage current
 to do that before the code map exists [cite: CLAUDE.md]. If you touch `backend/app/models.py`,
 grep every `settings.<FIELD>`/model field use first, regenerate the frontend client
 (`bash scripts/generate-client.sh`), and run both the backend suite and `bun run build`
-[cite: docs/agents/analysis/backend.md] [cite: docs/agents/analysis/frontend-client.md]. If you
-touch anything under `backend/app/api`, first confirm the module even imports cleanly given the
-`deps.py:36` issue above. For any backend change, run the gate's own commands locally:
-`$python -m ruff check .`, `$python -m ruff format --check .`, `$python -m ty check app`,
-`$python -m mypy app`, `FASTAPI_ENV=development $python -m alembic upgrade head`, then
+[cite: docs/agents/analysis/backend.md] [cite: docs/agents/analysis/frontend-client.md]. For any
+backend change, run the gate's own commands locally: `$python -m ruff check .`,
+`$python -m ruff format --check .`, `$python -m ty check app`, `$python -m mypy app`,
+`FASTAPI_ENV=development $python -m alembic upgrade head`, then
 `FASTAPI_ENV=development $python -m coverage run -m pytest tests/` and
 `$python -m coverage report --fail-under=90` [cite: CLAUDE.md]. For a frontend change, run
 `npm ci`/`bun ci` from the lock file, `bunx biome check`, `bun run build`, and the Playwright suite
@@ -342,9 +344,11 @@ check [cite: CLAUDE.md] [cite: docs/agents/analysis/frontend-lib.md].
 `frontend/src/client/**.gen.ts` via `scripts/generate-client.sh` before the frontend areas that
 depend on it (`frontend/components`, `frontend/routes`, `frontend/hooks`) will compile correctly
 [cite: docs/agents/analysis/frontend.md] [cite: docs/agents/analysis/frontend-client.md]. Watch
-the pinned-version seams specifically: Python is pinned `>=3.14,<4.0` but the graph recorded
-`python-stdlib` 3.11 usage, so confirm which interpreter CI actually uses before assuming either
-[cite: backend/pyproject.toml:5]; TypeScript is `^6.0.3` and the frontend build is `tsc -p
+the pinned-version seams specifically: Python is pinned `>=3.14,<4.0` — and the code already
+relies on a 3.14-only feature (PEP 758's unparenthesized multi-exception `except` in
+`backend/app/api/deps.py:36`) — while the graph recorded `python-stdlib` 3.11 usage, so confirm
+which interpreter CI actually uses, and don't downgrade below 3.14 without rewriting that line
+first [cite: backend/pyproject.toml:5]; TypeScript is `^6.0.3` and the frontend build is `tsc -p
 tsconfig.build.json && vite build` with Vite `^8.3.1` — a major bump to either, or to
 `@tanstack/react-router`/`react-query` (file-based routing and query invalidation touch nearly
 every route file), should be done with the full Playwright suite green before and after
@@ -364,4 +368,3 @@ written down and it currently has a known, undecided gap (passwords)
 profile's "veterinary clinic" framing as wrong for this repo — it's the generic FastAPI
 full-stack template with Users and Items, no real data, and no live deployment — per the team's
 own correction [cite: source:transcript-run-1416470e@r1#T3].
-</content>
