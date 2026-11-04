@@ -5,6 +5,7 @@
 ### Fixes
 
 * 🐛 A full name can't be only spaces: signing up, and adding or editing a user, now reject a full name made of only spaces or blank, so the sidebar and user list never show a blank name.
+* 🐛 An item's description of only spaces is no description: creating or editing an item with a description made of only spaces (or tabs or newlines) now clears it to no description instead of storing invisible blank text, and surrounding spaces are trimmed from any description you do enter.
 * 🐛 Fix Sonner toast theme sync. PR [#2450](https://github.com/fastapi/full-stack-fastapi-template/pull/2450) by [@chris-bs23](https://github.com/chris-bs23).
 * 🐛 Add background to the sticky layout header. PR [#2384](https://github.com/fastapi/full-stack-fastapi-template/pull/2384) by [@istoutjesdijk](https://github.com/istoutjesdijk).
 

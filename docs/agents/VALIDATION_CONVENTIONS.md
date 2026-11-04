@@ -22,3 +22,22 @@ strips the incoming value first, so a title of only spaces is rejected rather th
 
 See `docs/OPEN_QUESTIONS.md` for fields in the current codebase that declare `min_length` without
 either guard.
+
+## Optional API-boundary `str` fields with no `min_length` must treat whitespace-only as absent
+
+An optional `str | None` request field (no `min_length`, so empty string is otherwise valid) must
+still not store a value that is blank once trimmed: a value of only spaces/tabs/newlines means the
+field is absent, not that it holds invisible content.
+
+Guard against this with a `field_validator(..., mode="before")` that strips the incoming string
+and turns an empty result into `None` (rather than rejecting it, since the field is optional).
+
+### Pattern already in use in this codebase
+
+`ItemBase.description` and `ItemUpdate.description` (`backend/app/models.py`) both declare
+`Field(default=None, max_length=255)` with no `min_length`, and pair it with a `strip_description`
+`field_validator(mode="before")` (backed by the shared `_strip_description` helper) that strips the
+incoming value and returns `None` when the stripped result is empty, so a description of only
+spaces is stored as no description rather than as a blank-looking value. Use this as the template
+for any new or changed optional `str` field that should mean "absent" when blank.
+[cite: backend/app/models.py]
