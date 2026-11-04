@@ -1,5 +1,6 @@
 import uuid
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
@@ -48,6 +49,65 @@ def test_create_item_strips_surrounding_whitespace_from_title(
     assert response.status_code == 200
     content = response.json()
     assert content["title"] == "Foo"
+
+
+@pytest.mark.parametrize("blank_description", ["   ", "\t", ""])
+def test_create_item_blank_description_stored_as_none_ac1(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    blank_description: str,
+) -> None:
+    data = {"title": "Foo", "description": blank_description}
+    response = client.post(
+        f"{settings.API_V1_STR}/items/",
+        headers=superuser_token_headers,
+        json=data,
+    )
+    assert response.status_code == 200
+    content = response.json()
+    assert content["description"] is None
+
+
+def test_create_item_strips_surrounding_whitespace_from_description_ac2(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    data = {"title": "Foo", "description": "  Groceries  "}
+    response = client.post(
+        f"{settings.API_V1_STR}/items/",
+        headers=superuser_token_headers,
+        json=data,
+    )
+    assert response.status_code == 200
+    content = response.json()
+    assert content["description"] == "Groceries"
+
+
+def test_create_item_omitted_description_still_none_ac4(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    data = {"title": "Foo"}
+    response = client.post(
+        f"{settings.API_V1_STR}/items/",
+        headers=superuser_token_headers,
+        json=data,
+    )
+    assert response.status_code == 200
+    content = response.json()
+    assert content["description"] is None
+
+
+def test_create_item_null_description_stays_none_ac4(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    data = {"title": "Foo", "description": None}
+    response = client.post(
+        f"{settings.API_V1_STR}/items/",
+        headers=superuser_token_headers,
+        json=data,
+    )
+    assert response.status_code == 200
+    content = response.json()
+    assert content["description"] is None
 
 
 def test_read_item(
@@ -149,6 +209,70 @@ def test_update_item_strips_surrounding_whitespace_from_title(
     assert response.status_code == 200
     content = response.json()
     assert content["title"] == "Updated title"
+
+
+@pytest.mark.parametrize("blank_description", ["   ", "\t", ""])
+def test_update_item_blank_description_becomes_none_ac3(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    db: Session,
+    blank_description: str,
+) -> None:
+    item = create_random_item(db)
+    data = {"title": "Updated title", "description": blank_description}
+    response = client.put(
+        f"{settings.API_V1_STR}/items/{item.id}",
+        headers=superuser_token_headers,
+        json=data,
+    )
+    assert response.status_code == 200
+    content = response.json()
+    assert content["description"] is None
+
+
+def test_update_item_strips_surrounding_whitespace_from_description_ac3(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    item = create_random_item(db)
+    data = {"title": "Updated title", "description": "  Groceries  "}
+    response = client.put(
+        f"{settings.API_V1_STR}/items/{item.id}",
+        headers=superuser_token_headers,
+        json=data,
+    )
+    assert response.status_code == 200
+    content = response.json()
+    assert content["description"] == "Groceries"
+
+
+def test_update_item_omitted_description_unchanged_ac4(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    item = create_random_item(db)
+    data = {"title": "Updated title"}
+    response = client.put(
+        f"{settings.API_V1_STR}/items/{item.id}",
+        headers=superuser_token_headers,
+        json=data,
+    )
+    assert response.status_code == 200
+    content = response.json()
+    assert content["description"] == item.description
+
+
+def test_update_item_null_description_stays_none_ac4(
+    client: TestClient, superuser_token_headers: dict[str, str], db: Session
+) -> None:
+    item = create_random_item(db)
+    data = {"title": "Updated title", "description": None}
+    response = client.put(
+        f"{settings.API_V1_STR}/items/{item.id}",
+        headers=superuser_token_headers,
+        json=data,
+    )
+    assert response.status_code == 200
+    content = response.json()
+    assert content["description"] is None
 
 
 def test_update_item_not_found(
